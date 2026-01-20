@@ -10,6 +10,7 @@ public class ClientHandler implements Runnable {
     private PrintWriter out;
     private BufferedReader in;
     private String nick;
+    private volatile boolean kicked;
 
     public ClientHandler(Socket socket, ChatServer server) {
         this.socket = socket;
@@ -30,6 +31,7 @@ public class ClientHandler implements Runnable {
                 if (line.startsWith(Protocol.NICK)) {
                     String desired = line.substring(Protocol.NICK.length()).trim();
                     if (desired.isEmpty()) { out.println("Servidor: nick invalido."); continue; }
+                    if (server.isBanned(desired)) { out.println("Servidor: voce esta banido."); continue; }
 
                     if (server.registerNick(desired, this)) {
                         nick = desired;
@@ -49,7 +51,14 @@ public class ClientHandler implements Runnable {
                 if (line.equalsIgnoreCase(Protocol.QUIT)) break;
 
                 if (line.startsWith(Protocol.MSG)) {
-                    server.broadcastFromUser(nick, line.substring(Protocol.MSG.length()));
+                    String msg = line.substring(Protocol.MSG.length()).trim();
+                    if (msg.startsWith("/kick ")) {
+                        handleKick(msg.substring(6).trim());
+                    } else if (msg.startsWith("/ban ")) {
+                        handleBan(msg.substring(5).trim());
+                    } else {
+                        server.broadcastFromUser(nick, msg);
+                    }
                 } else if (line.startsWith(Protocol.JOIN)) {
                     String room = line.substring(Protocol.JOIN.length()).trim();
                     server.joinRoom(nick, room);
@@ -74,12 +83,38 @@ public class ClientHandler implements Runnable {
             if (nick != null) {
                 String room = server.getRoomOf(nick);
                 server.removeClient(nick);
-                server.broadcastToRoom(room, "Servidor", nick + " saiu.");
+                if (!kicked) {
+                    server.broadcastToRoom(room, "Servidor", nick + " saiu.");
+                }
             }
         }
     }
 
     public void send(String message) {
         if (out != null) out.println(message);
+    }
+
+    public void disconnect(String reason) {
+        kicked = true;
+        if (out != null && reason != null && !reason.isBlank()) {
+            out.println("Servidor: " + reason);
+        }
+        try { socket.close(); } catch (IOException ignored) {}
+    }
+
+    private void handleKick(String target) {
+        if (!server.isAdmin(nick)) {
+            out.println("Servidor: comando admin. Sem permissao.");
+            return;
+        }
+        server.kickNick(nick, target);
+    }
+
+    private void handleBan(String target) {
+        if (!server.isAdmin(nick)) {
+            out.println("Servidor: comando admin. Sem permissao.");
+            return;
+        }
+        server.banNick(nick, target);
     }
 }
