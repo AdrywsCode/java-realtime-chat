@@ -1,38 +1,24 @@
 # Java Realtime Chat
 
-Aplicação de chat em tempo real desenvolvida em **Java puro**, utilizando **Sockets TCP** e **Multithreading**, permitindo múltiplos clientes simultâneos via terminal.
+Chat em tempo real feito em Java puro com sockets TCP e multithreading. Suporta varios clientes simultaneos, salas, mensagens privadas e GUI em Swing.
 
-Agora com **salas (rooms)**, **mensagens privadas**, **lista de usuários por sala** e arquitetura preparada para GUI (Swing).
+## Funcionalidades
+- Multiplos clientes simultaneos
+- Mensagens em tempo real por sala
+- Mensagens privadas (PM)
+- Sistema de salas (`/join`)
+- Lista de usuarios na sala (`/who`)
+- Admin (primeiro nick conectado) com `/kick` e `/ban`
+- GUI em Swing com historico por sala, limpar e lista de usuarios
+- Logs do servidor com rotacao diaria
 
----
+## Tecnologias
+- Java (puro)
+- Sockets TCP
+- Threads
+- Arquitetura cliente-servidor
 
-## 🚀 Funcionalidades
-
-* Múltiplos clientes simultâneos
-* Comunicação em tempo real
-* Servidor centralizado
-* Sistema de nick
-* Mensagens públicas por sala
-* Mensagens privadas (PM)
-* Sistema de salas (rooms)
-* Lista de usuários na sala (`/who`)
-* Troca de sala (`/join nomeDaSala`)
-* Execução via terminal (console)
-
----
-
-## 🛠️ Tecnologias utilizadas
-
-* Java (puro, sem frameworks)
-* Sockets TCP
-* Threads
-* Programação concorrente
-* Arquitetura cliente-servidor
-
----
-
-## 📁 Estrutura do projeto
-
+## Estrutura
 ```
 java-realtime-chat/
   src/
@@ -41,99 +27,71 @@ java-realtime-chat/
     client/
       ChatConnection.java
       ChatClientMain.java
+      gui/
+        ChatWindow.java
     server/
       ChatServer.java
       ClientHandler.java
+  out/
 ```
 
----
-
-## ▶️ Como compilar
-
-No CMD (Windows), dentro da pasta do projeto:
-
-```bat
-rmdir /s /q out
-mkdir out
-javac -d out src\common\Protocol.java src\client\ChatConnection.java src\client\ChatClientMain.java src\server\ChatServer.java src\server\ClientHandler.java
+## Como compilar (Windows)
+No PowerShell dentro da pasta do projeto:
+```powershell
+rg --files -g "*.java" > .sources.tmp
+javac -encoding UTF-8 -d out @.sources.tmp
+del .sources.tmp
 ```
 
----
+Ou use o script:
+```powershell
+.\build-and-run.bat
+```
 
-## ▶️ Como executar
-
-### 1. Inicie o servidor
-
-Abra um terminal:
-
-```bat
+## Como executar
+Servidor:
+```powershell
 java -cp out server.ChatServer
 ```
 
----
+Cliente GUI:
+```powershell
+java -cp out client.gui.ChatWindow
+```
 
-### 2. Inicie os clientes
-
-Abra um ou mais terminais:
-
-```bat
+Cliente terminal:
+```powershell
 java -cp out client.ChatClientMain
 ```
 
-Cada terminal representa um usuário diferente.
-
----
-
-## 💬 Comandos disponíveis
-
-| Comando             | Função                           |
-| ------------------- | -------------------------------- |
-| Texto normal        | Envia mensagem para a sala atual |
-| `/pm nick mensagem` | Envia mensagem privada           |
-| `/join sala`        | Entra/cria uma sala              |
-| `/who`              | Lista usuários da sala           |
-| `/quit`             | Sai do chat                      |
-
----
-
-## 🏠 Sistema de Salas (Rooms)
-
-* Todo usuário começa na sala `lobby`
-* Ao entrar em outra sala, você sai da atual
-* Mensagens públicas só aparecem para usuários da mesma sala
-* Exemplo:
-
-```text
-/join games
-/join java
+Abrir varios clientes:
+```powershell
+.\open-clients.bat 3
+.\open-cli-clients.bat 3
 ```
 
----
+## Comandos
+| Comando | Funcao |
+| --- | --- |
+| Texto normal | Envia mensagem para a sala atual |
+| `/pm nick mensagem` | Mensagem privada |
+| `/join sala` | Entra/cria uma sala |
+| `/who` | Lista usuarios da sala |
+| `/kick nick` | Desconecta (admin) |
+| `/ban nick` | Bane (admin) |
+| `/quit` | Sai do chat |
 
-## 📸 Screenshots
+## Regras importantes
+- Todo usuario entra na sala `lobby`.
+- O primeiro nick conectado vira admin.
+- O `/kick` desconecta e permite reconectar.
+- O `/ban` bloqueia o nick para novas conexoes.
 
-> Adicione prints do servidor e de múltiplos clientes rodando.
+## Logs
+O servidor grava logs em arquivos diaros:
+```
+server-YYYY-MM-DD.log
+```
 
----
-
-## 📌 Próximos upgrades planejados
-
-* Interface gráfica (Swing)
-* Autenticação (login e registro)
-* Histórico persistente
-* Notificações
-* Lista visual de usuários
-
----
-
-## 👨‍💻 Autor
-
-Desenvolvido por **Jhonatan**
-
----
-
-## 📄 Licença
-
-Este projeto é livre para fins educacionais e de aprendizado.
-
-
+## Autor
+Desenvolvido por Jhonatan.
