@@ -1,8 +1,12 @@
 package server;
 
+import java.io.FileWriter;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -15,16 +19,26 @@ public class ChatServer {
     // nick -> room
     private final ConcurrentHashMap<String, String> userRoom = new ConcurrentHashMap<>();
 
+    // banned nicks (lowercase)
+    private final Set<String> banned = ConcurrentHashMap.newKeySet();
+
+    private volatile String adminNick;
+    private PrintWriter logWriter;
+    private final Object logLock = new Object();
+    private String currentLogDate;
+
     public ChatServer(int port) {
         this.port = port;
+        this.currentLogDate = "";
     }
 
     public void start() throws IOException {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
-            System.out.println("Servidor rodando na porta " + port);
+            log("Servidor rodando na porta " + port);
 
             while (true) {
                 Socket socket = serverSocket.accept();
+                log("Nova conexao de " + socket.getRemoteSocketAddress());
                 ClientHandler handler = new ClientHandler(socket, this);
                 new Thread(handler).start();
             }
@@ -32,8 +46,15 @@ public class ChatServer {
     }
 
     public boolean registerNick(String nick, ClientHandler handler) {
+        if (isBanned(nick)) return false;
         boolean ok = clients.putIfAbsent(nick, handler) == null;
-        if (ok) userRoom.put(nick, "lobby");
+        if (ok) {
+            userRoom.put(nick, "lobby");
+            if (adminNick == null) {
+                adminNick = nick;
+                log("Admin definido: " + adminNick);
+            }
+        }
         return ok;
     }
 
@@ -41,6 +62,7 @@ public class ChatServer {
         if (nick != null) {
             clients.remove(nick);
             userRoom.remove(nick);
+            log("Cliente saiu: " + nick);
         }
     }
 
@@ -76,6 +98,7 @@ public class ChatServer {
 
     public void broadcastFromUser(String from, String message) {
         String room = getRoomOf(from);
+        log("MSG [" + room + "] " + from + ": " + message);
         broadcastToRoom(room, from, message);
     }
 
@@ -100,6 +123,7 @@ public class ChatServer {
 
         target.send("[PM] " + from + ": " + message);
         if (sender != null) sender.send("[PM -> " + to + "] " + message);
+        log("PM " + from + " -> " + to + ": " + message);
 
         return true;
     }
@@ -117,6 +141,58 @@ public class ChatServer {
         ClientHandler req = clients.get(requesterNick);
         if (req != null) {
             req.send("Servidor: usuarios na sala '" + room + "': " + String.join(", ", names));
+        }
+    }
+
+    public boolean isAdmin(String nick) {
+        return nick != null && nick.equals(adminNick);
+    }
+
+    public boolean isBanned(String nick) {
+        if (nick == null) return false;
+        return banned.contains(nick.toLowerCase(Locale.ROOT));
+    }
+
+    public void kickNick(String admin, String target) {
+        ClientHandler handler = clients.get(target);
+        if (handler == null) {
+            ClientHandler sender = clients.get(admin);
+            if (sender != null) sender.send("Servidor: usuario '" + target + "' nao encontrado.");
+            return;
+        }
+
+        handler.disconnect("voce foi removido por um admin.");
+        removeClient(target);
+        log("KICK " + admin + " -> " + target);
+    }
+
+    public void banNick(String admin, String target) {
+        if (target == null || target.isBlank()) return;
+        banned.add(target.toLowerCase(Locale.ROOT));
+        kickNick(admin, target);
+        log("BAN " + admin + " -> " + target);
+    }
+
+    public void log(String message) {
+        LocalDateTime now = LocalDateTime.now();
+        String ts = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        String line = "[" + ts + "] " + message;
+        System.out.println(line);
+        synchronized (logLock) {
+            String logDate = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+            if (!logDate.equals(currentLogDate) || logWriter == null) {
+                if (logWriter != null) logWriter.close();
+                try {
+                    logWriter = new PrintWriter(new FileWriter("server-" + logDate + ".log", true), true);
+                    currentLogDate = logDate;
+                } catch (IOException e) {
+                    logWriter = null;
+                    currentLogDate = "";
+                }
+            }
+            if (logWriter != null) {
+                logWriter.println(line);
+            }
         }
     }
 
