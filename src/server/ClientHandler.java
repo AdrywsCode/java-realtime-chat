@@ -1,20 +1,14 @@
-// src/server/ClientHandler.java
 package server;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
+import common.Protocol;
+import java.io.*;
 import java.net.Socket;
-import java.util.logging.Logger;
 
 public class ClientHandler implements Runnable {
-    private static final Logger logger = Logger.getLogger(ClientHandler.class.getName());
     private final Socket socket;
     private final ChatServer server;
-    private BufferedReader in;
     private PrintWriter out;
+    private BufferedReader in;
     private String nick;
 
     public ClientHandler(Socket socket, ChatServer server) {
@@ -24,71 +18,68 @@ public class ClientHandler implements Runnable {
 
     @Override
     public void run() {
-        try {
-            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+        try (socket) {
             out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true);
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
+            out.println("Servidor: Bem-vindo! Envie " + Protocol.NICK + "seu_nome");
             String line;
+
+            // registrar nick
             while ((line = in.readLine()) != null) {
-                if (line.startsWith("NICK:")) {
-                    String desired = line.substring("NICK:".length()).trim();
-                    if (desired.isEmpty()) {
-                        out.println("ERRO:Nick vazio");
-                        continue;
-                    }
+                if (line.startsWith(Protocol.NICK)) {
+                    String desired = line.substring(Protocol.NICK.length()).trim();
+                    if (desired.isEmpty()) { out.println("Servidor: nick invalido."); continue; }
+
                     if (server.registerNick(desired, this)) {
                         nick = desired;
-                        out.println("OK:NICK");
+                        out.println("Servidor: OK! Sala atual = lobby. Use /join sala | /who | /pm nick msg | /quit");
+                        server.broadcastToRoom("lobby", "Servidor", nick + " entrou no chat.");
+                        break;
                     } else {
-                        out.println("ERRO:Nick em uso");
+                        out.println("Servidor: nick em uso. Tente outro.");
                     }
-                    continue;
-                }
-
-                if (line.equals("QUIT")) {
-                    break;
-                }
-
-                if (nick == null) {
-                    out.println("ERRO:Defina NICK primeiro");
-                    continue;
-                }
-
-                if (line.startsWith("PM:")) {
-                    String[] parts = line.split(":", 3);
-                    if (parts.length == 3) {
-                        server.sendPrivate(nick, parts[1], parts[2]);
-                    } else {
-                        out.println("ERRO:PM invalido");
-                    }
-                    continue;
-                }
-
-                if (line.startsWith("MSG:")) {
-                    String msg = line.substring("MSG:".length());
-                    server.broadcast(nick, msg);
-                    continue;
+                } else {
+                    out.println("Servidor: primeiro defina nick com " + Protocol.NICK + "seu_nome");
                 }
             }
-        } catch (IOException e) {
-            logger.info("Conexao encerrada: " + e.getMessage());
+
+            // loop principal
+            while ((line = in.readLine()) != null) {
+                if (line.equalsIgnoreCase(Protocol.QUIT)) break;
+
+                if (line.startsWith(Protocol.MSG)) {
+                    server.broadcastFromUser(nick, line.substring(Protocol.MSG.length()));
+                } else if (line.startsWith(Protocol.JOIN)) {
+                    String room = line.substring(Protocol.JOIN.length()).trim();
+                    server.joinRoom(nick, room);
+                } else if (line.equalsIgnoreCase(Protocol.WHO)) {
+                    server.sendWho(nick);
+                } else if (line.startsWith(Protocol.PM)) {
+                    String rest = line.substring(Protocol.PM.length());
+                    int idx = rest.indexOf(':');
+                    if (idx > 0) {
+                        String to = rest.substring(0, idx).trim();
+                        String msg = rest.substring(idx + 1);
+                        server.sendPrivate(nick, to, msg);
+                    } else {
+                        out.println("Servidor: formato PM invalido. Use /pm nick mensagem");
+                    }
+                } else {
+                    out.println("Servidor: comando desconhecido.");
+                }
+            }
+        } catch (IOException ignored) {
         } finally {
-            cleanup();
+            if (nick != null) {
+                String room = server.getRoomOf(nick);
+                server.removeClient(nick);
+                server.broadcastToRoom(room, "Servidor", nick + " saiu.");
+            }
         }
     }
 
     public void send(String message) {
-        if (out != null) {
-            out.println(message);
-        }
-    }
-
-    private void cleanup() {
-        server.removeClient(nick);
-        try {
-            socket.close();
-        } catch (IOException _) {
-            // Ignore
-        }
+        if (out != null) out.println(message);
     }
 }
